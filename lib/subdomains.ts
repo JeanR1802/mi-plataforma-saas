@@ -1,61 +1,63 @@
-import { redis } from '@/lib/redis';
+import { supabase } from '@/lib/supabase'; // Importamos nuestro conector de Supabase
 
+// La función para validar el emoji no cambia, la mantenemos igual.
 export function isValidIcon(str: string) {
   if (str.length > 10) {
     return false;
   }
-
   try {
-    // Primary validation: Check if the string contains at least one emoji character
-    // This regex pattern matches most emoji Unicode ranges
     const emojiPattern = /[\p{Emoji}]/u;
     if (emojiPattern.test(str)) {
       return true;
     }
   } catch (error) {
-    // If the regex fails (e.g., in environments that don't support Unicode property escapes),
-    // fall back to a simpler validation
-    console.warn(
-      'Emoji regex validation failed, using fallback validation',
-      error
-    );
+    console.warn('Emoji regex validation failed', error);
   }
-
-  // Fallback validation: Check if the string is within a reasonable length
-  // This is less secure but better than no validation
   return str.length >= 1 && str.length <= 10;
 }
 
-type SubdomainData = {
-  emoji: string;
-  createdAt: number;
-};
+// --- LÓGICA DE SUPABASE ---
 
+// Esta función busca los datos de UNA SOLA tienda por su slug.
+// Se usará en la página del subdominio.
 export async function getSubdomainData(subdomain: string) {
   const sanitizedSubdomain = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '');
-  const data = await redis.get<SubdomainData>(
-    `subdomain:${sanitizedSubdomain}`
-  );
-  return data;
+  
+  const { data, error } = await supabase
+    .from('Store')
+    .select('slug, name, heroTitle, created_at') // Pedimos los campos que necesitamos
+    .eq('slug', sanitizedSubdomain)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    console.error('Error fetching subdomain data:', error);
+    return null;
+  }
+
+  // Devolvemos los datos en el formato que el resto de la aplicación espera.
+  return data ? {
+    subdomain: data.slug,
+    emoji: data.heroTitle || '❓', // Usamos heroTitle como el emoji
+    createdAt: new Date(data.created_at).getTime()
+  } : null;
 }
 
+// Esta función busca TODAS las tiendas.
+// Se usará en el panel de administrador.
 export async function getAllSubdomains() {
-  const keys = await redis.keys('subdomain:*');
+  const { data, error } = await supabase
+    .from('Store')
+    .select('slug, name, heroTitle, created_at');
 
-  if (!keys.length) {
+  if (error) {
+    console.error('Error fetching all subdomains:', error);
     return [];
   }
 
-  const values = await redis.mget<SubdomainData[]>(...keys);
-
-  return keys.map((key, index) => {
-    const subdomain = key.replace('subdomain:', '');
-    const data = values[index];
-
-    return {
-      subdomain,
-      emoji: data?.emoji || '❓',
-      createdAt: data?.createdAt || Date.now()
-    };
-  });
+  // Devolvemos los datos en el formato que el panel de admin espera.
+  return data.map(store => ({
+    subdomain: store.slug,
+    emoji: store.heroTitle || '❓',
+    createdAt: new Date(store.created_at).getTime()
+  }));
 }

@@ -1,69 +1,66 @@
 'use server';
 
-import { redis } from '@/lib/redis';
-import { isValidIcon } from '@/lib/subdomains';
+import { supabase } from '@/lib/supabase'; // Importamos nuestro nuevo conector de Supabase
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { rootDomain, protocol } from '@/lib/utils';
 
-export async function createSubdomainAction(
+export async function createStoreAction( // Cambiamos el nombre para que sea más claro
   prevState: any,
   formData: FormData
 ) {
-  const subdomain = formData.get('subdomain') as string;
-  const icon = formData.get('icon') as string;
+  const slug = formData.get('subdomain') as string;
+  // El campo 'icon' del formulario ya no lo usaremos, pero lo dejamos por si acaso.
+  const name = `Tienda ${slug}`; // Creamos un nombre por defecto
 
-  if (!subdomain || !icon) {
-    return { success: false, error: 'Subdomain and icon are required' };
+  if (!slug) {
+    return { success: false, error: 'El nombre del subdominio es requerido' };
   }
 
-  if (!isValidIcon(icon)) {
+  const sanitizedSlug = slug.toLowerCase().replace(/[^a-z0-9-]/g, '');
+
+  if (sanitizedSlug !== slug) {
     return {
-      subdomain,
-      icon,
+      slug,
       success: false,
-      error: 'Please enter a valid emoji (maximum 10 characters)'
+      error: 'El subdominio solo puede tener letras minúsculas, números y guiones.'
     };
   }
 
-  const sanitizedSubdomain = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '');
+  // --- LÓGICA DE SUPABASE ---
+  // 1. Verificamos si el slug ya existe en nuestra tabla 'Store'
+  const { data: existingStore, error: checkError } = await supabase
+    .from('Store')
+    .select('slug')
+    .eq('slug', sanitizedSlug)
+    .single();
 
-  if (sanitizedSubdomain !== subdomain) {
+  if (checkError && checkError.code !== 'PGRST116') { // Ignoramos el error "no rows found"
+    console.error('Error al verificar slug:', checkError);
+    return { success: false, error: 'Error en la base de datos.' };
+  }
+
+  if (existingStore) {
     return {
-      subdomain,
-      icon,
+      slug,
       success: false,
-      error:
-        'Subdomain can only have lowercase letters, numbers, and hyphens. Please try again.'
+      error: 'Este subdominio ya está en uso.'
     };
   }
 
-  const subdomainAlreadyExists = await redis.get(
-    `subdomain:${sanitizedSubdomain}`
-  );
-  if (subdomainAlreadyExists) {
-    return {
-      subdomain,
-      icon,
-      success: false,
-      error: 'This subdomain is already taken'
-    };
-  }
-
-  await redis.set(`subdomain:${sanitizedSubdomain}`, {
-    emoji: icon,
-    createdAt: Date.now()
+  // 2. Si no existe, lo insertamos en la tabla 'Store'
+  const { error: insertError } = await supabase.from('Store').insert({
+    slug: sanitizedSlug,
+    name: name,
+    status: 'BUILT' // Puedes poner el estado que quieras
   });
 
-  redirect(`${protocol}://${sanitizedSubdomain}.${rootDomain}`);
-}
+  if (insertError) {
+    console.error('Error al insertar tienda:', insertError);
+    return { success: false, error: 'No se pudo crear la tienda.' };
+  }
+  // --- FIN LÓGICA DE SUPABASE ---
 
-export async function deleteSubdomainAction(
-  prevState: any,
-  formData: FormData
-) {
-  const subdomain = formData.get('subdomain');
-  await redis.del(`subdomain:${subdomain}`);
-  revalidatePath('/admin');
-  return { success: 'Domain deleted successfully' };
+  // Redirigimos al nuevo subdominio
+  redirect(`${protocol}://${sanitizedSlug}.${rootDomain}`);
 }
