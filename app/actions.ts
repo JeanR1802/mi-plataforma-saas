@@ -1,66 +1,93 @@
 'use server';
 
-import { supabase } from '@/lib/supabase'; // Importamos nuestro nuevo conector de Supabase
+import { supabase } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { rootDomain, protocol } from '@/lib/utils';
+import { isValidIcon } from '@/lib/subdomains';
 
-export async function createStoreAction( // Cambiamos el nombre para que sea más claro
+export async function createSubdomainAction(
   prevState: any,
   formData: FormData
 ) {
-  const slug = formData.get('subdomain') as string;
-  // El campo 'icon' del formulario ya no lo usaremos, pero lo dejamos por si acaso.
-  const name = `Tienda ${slug}`; // Creamos un nombre por defecto
+  const subdomain = formData.get('subdomain') as string;
+  const icon = formData.get('icon') as string;
 
-  if (!slug) {
-    return { success: false, error: 'El nombre del subdominio es requerido' };
+  if (!subdomain || !icon) {
+    return { success: false, error: 'Subdomain and icon are required' };
   }
 
-  const sanitizedSlug = slug.toLowerCase().replace(/[^a-z0-9-]/g, '');
-
-  if (sanitizedSlug !== slug) {
+  if (!isValidIcon(icon)) {
     return {
-      slug,
+      subdomain,
+      icon,
       success: false,
-      error: 'El subdominio solo puede tener letras minúsculas, números y guiones.'
+      error: 'Please enter a valid emoji (maximum 10 characters)'
     };
   }
 
-  // --- LÓGICA DE SUPABASE ---
-  // 1. Verificamos si el slug ya existe en nuestra tabla 'Store'
+  const sanitizedSubdomain = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '');
+
+  if (sanitizedSubdomain !== subdomain) {
+    return {
+      subdomain,
+      icon,
+      success: false,
+      error: 'Subdomain can only have lowercase letters, numbers, and hyphens. Please try again.'
+    };
+  }
+
   const { data: existingStore, error: checkError } = await supabase
     .from('Store')
     .select('slug')
-    .eq('slug', sanitizedSlug)
+    .eq('slug', sanitizedSubdomain)
     .single();
 
-  if (checkError && checkError.code !== 'PGRST116') { // Ignoramos el error "no rows found"
+  if (checkError && checkError.code !== 'PGRST116') {
     console.error('Error al verificar slug:', checkError);
     return { success: false, error: 'Error en la base de datos.' };
   }
 
   if (existingStore) {
     return {
-      slug,
+      subdomain,
+      icon,
       success: false,
-      error: 'Este subdominio ya está en uso.'
+      error: 'This subdomain is already taken'
     };
   }
 
-  // 2. Si no existe, lo insertamos en la tabla 'Store'
   const { error: insertError } = await supabase.from('Store').insert({
-    slug: sanitizedSlug,
-    name: name,
-    status: 'BUILT' // Puedes poner el estado que quieras
+    slug: sanitizedSubdomain,
+    name: `Tienda ${sanitizedSubdomain}`,
+    heroTitle: icon,
+    status: 'BUILT'
   });
 
   if (insertError) {
     console.error('Error al insertar tienda:', insertError);
     return { success: false, error: 'No se pudo crear la tienda.' };
   }
-  // --- FIN LÓGICA DE SUPABASE ---
 
-  // Redirigimos al nuevo subdominio
-  redirect(`${protocol}://${sanitizedSlug}.${rootDomain}`);
+  redirect(`${protocol}://${sanitizedSubdomain}.${rootDomain}`);
+}
+
+export async function deleteSubdomainAction(
+  prevState: any,
+  formData: FormData
+) {
+  const subdomain = formData.get('subdomain') as string;
+  
+  const { error } = await supabase
+    .from('Store')
+    .delete()
+    .eq('slug', subdomain);
+
+  if (error) {
+    console.error('Error al borrar tienda:', error);
+    return { error: 'No se pudo borrar el subdominio.' };
+  }
+
+  revalidatePath('/admin');
+  return { success: 'Subdominio borrado con éxito.' };
 }
