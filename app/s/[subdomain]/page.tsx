@@ -3,29 +3,33 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { rootDomain } from '@/lib/utils';
 
-// Definimos un tipo para las props que reciben nuestras funciones
-type Props = {
-  params: { subdomain: string };
+// Definimos un tipo para los parámetros que esperamos
+type PageParams = {
+  subdomain: string;
 };
 
 // Esta función genera los metadatos (título de la pestaña) dinámicamente
 export async function generateMetadata({
-  params
-}: Props): Promise<Metadata | null> {
+  params,
+}: {
+  params: PageParams;
+}): Promise<Metadata | null> {
   const data = await getSubdomainData(params.subdomain);
   if (!data) {
     return null;
   }
   const { subdomain } = data;
   return {
-    title: `${subdomain} | ${rootDomain}`
+    title: `${subdomain} | ${rootDomain}`,
   };
 }
 
 // Esta es la página principal del subdominio
 export default async function SubdomainPage({
-  params
-}: Props) {
+  params,
+}: {
+  params: PageParams;
+}) {
   const data = await getSubdomainData(params.subdomain);
 
   // Si no encuentra la tienda en Supabase, muestra un 404
