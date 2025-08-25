@@ -18,6 +18,14 @@ export function isValidIcon(str: string) {
 
 // --- LÓGICA DE SUPABASE ---
 
+// Definimos un tipo para los datos que esperamos de la tabla 'Store'
+type Store = {
+  slug: string;
+  name: string | null;
+  heroTitle: string | null;
+  created_at: string;
+};
+
 // Esta función busca los datos de UNA SOLA tienda por su slug.
 // Se usará en la página del subdominio.
 export async function getSubdomainData(subdomain: string) {
@@ -55,7 +63,7 @@ export async function getAllSubdomains() {
   }
 
   // Devolvemos los datos en el formato que el panel de admin espera.
-  return data.map(store => ({
+  return data.map((store: Store) => ({
     subdomain: store.slug,
     emoji: store.heroTitle || '❓',
     createdAt: new Date(store.created_at).getTime()

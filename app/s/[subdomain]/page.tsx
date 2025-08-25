@@ -1,62 +1,45 @@
-import Link from 'next/link';
-import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
 import { getSubdomainData } from '@/lib/subdomains';
-import { protocol, rootDomain } from '@/lib/utils';
+import { notFound } from 'next/navigation';
+import type { Metadata } from 'next';
+import { rootDomain } from '@/lib/utils';
 
+// Esta función genera los metadatos (título de la pestaña) dinámicamente
 export async function generateMetadata({
   params
 }: {
-  params: Promise<{ subdomain: string }>;
-}): Promise<Metadata> {
-  const { subdomain } = await params;
-  const subdomainData = await getSubdomainData(subdomain);
-
-  if (!subdomainData) {
-    return {
-      title: rootDomain
-    };
+  params: { subdomain: string };
+}): Promise<Metadata | null> {
+  const data = await getSubdomainData(params.subdomain);
+  if (!data) {
+    return null;
   }
-
+  const { subdomain } = data;
   return {
-    title: `${subdomain}.${rootDomain}`,
-    description: `Subdomain page for ${subdomain}.${rootDomain}`
+    title: `${subdomain} | ${rootDomain}`
   };
 }
 
+// Esta es la página principal del subdominio
 export default async function SubdomainPage({
   params
 }: {
-  params: Promise<{ subdomain: string }>;
+  params: { subdomain: string };
 }) {
-  const { subdomain } = await params;
-  const subdomainData = await getSubdomainData(subdomain);
+  const data = await getSubdomainData(params.subdomain);
 
-  if (!subdomainData) {
+  // Si no encuentra la tienda en Supabase, muestra un 404
+  if (!data) {
     notFound();
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-gradient-to-b from-blue-50 to-white p-4">
-      <div className="absolute top-4 right-4">
-        <Link
-          href={`${protocol}://${rootDomain}`}
-          className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
-        >
-          {rootDomain}
-        </Link>
-      </div>
-
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-9xl mb-6">{subdomainData.emoji}</div>
-          <h1 className="text-4xl font-bold tracking-tight text-gray-900">
-            Welcome to {subdomain}.{rootDomain}
-          </h1>
-          <p className="mt-3 text-lg text-gray-600">
-            This is your custom subdomain page
-          </p>
-        </div>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-blue-50 to-white">
+      <div className="text-center">
+        {/* Usamos el 'emoji' que guardamos en la columna 'heroTitle' de Supabase */}
+        <h1 className="text-9xl">{data.emoji}</h1>
+        <p className="mt-4 text-2xl font-semibold text-gray-700">
+          Bienvenido a {data.subdomain}.{rootDomain}
+        </p>
       </div>
     </div>
   );
